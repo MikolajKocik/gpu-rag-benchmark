@@ -1,56 +1,25 @@
-# Azure RAG Docs Assistant
+# GPU RAG Benchmark
 
-RAG-based AI web API for business document analysis on Azure. It ingests documents, extracts text with Azure Document Intelligence (Form Recognizer), generates embeddings with Azure OpenAI, stores vectors in Azure Azure AI Search, and answers questions by retrieving relevant passages and prompting a GPT model.
+This benchmark compares a standard CPU/Cloud retrieval pipeline against a fully GPU-accelerated pipeline using NVIDIA NIM and NeMo Retriever.
 
-- Tech: ASP.NET Core Minimal API, Azure Key Vault, Blob Storage, Application Insights, Azure AI Search (vector search), Document Intelligence, Azure OpenAI (Embeddings + GPT).
-- Storage and secrets: All sensitive values are pulled from Azure Key Vault via DefaultAzureCredential.
+## Tested Models
 
 > [!IMPORTANT]
 > This project uses paid Azure resources such as Azure AI Search, Azure OpenAI, Storage, Key Vault, and Document Intelligence.  
 > For local development, the recommended workflow is: `terraform apply → test → delete the resource group`.
 
-## Table of Contents
-- [Features](#features)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Configuration](#configuration)
-- [Run locally](#run-locally)
-- [API Reference](#api-reference)
-- [Azure setup checklist](#azure-setup-checklist)
-- [Telemetry](#telemetry)
-- [Limitations / Notes](#limitations--notes)
-
-## Features
-- File upload to Azure Blob Storage (`.md`, `.txt`, PDF, images).
-- Document text extraction using Form Recognizer (prebuilt-document model).
-- Text chunking and embedding generation (Azure OpenAI).
-- Vector KNN search over documents in Azure Azure AI Search.
-- GPT-based Q&A grounded in retrieved document excerpts.
-- Application Insights instrumentation (requests, events, exceptions).
-- Secrets managed in Azure Key Vault.
-
-## Architecture
-1) Upload: Client sends a document (multipart/form-data) to the API; the file is persisted to Blob Storage.
-2) Process: The API extracts text with Form Recognizer, chunks it, generates embeddings, and indexes the chunks into Azure Azure AI Search as documents with an embedding vector field.
-3) Ask: The API embeds the user’s question, performs vector KNN search against the index to get the most relevant chunks, and prompts the chat model to answer using only those excerpts.
-
-Key components (namespaces):
-- Endpoints:
-  - UploadBlob (/upload)
-  - ProcessDocument (/process)
-  - Ask (/ask)
-  - SendToAppFunctions (/sendToFunction)
-  - HealthCheck (/health)
-- Services:
-  - Key Vault (ISecretProvider via DefaultAzureCredential)
-  - Blob Storage (IBlobStorageService)
+CPU
   - Document Intelligence (FormRecognizerService)
   - Azure OpenAI Embeddings (TextEmbeddingService)
   - Azure OpenAI Chat (IChatService implemented by GPT_4_Model)
   - Azure Azure AI Search (via SearchClient, index: documents-index)
 
+GPU
+  - NVIDIA NeMo Retriever
+  - NVIDIA NIM microservices
+
 ## Prerequisites
-- .NET SDK 7+ (recommended .NET 8).
+- .NET SDK 10.
 - Azure subscription with:
   - Azure Key Vault
   - Azure Storage Account (Blob)
@@ -104,9 +73,7 @@ Authentication to Key Vault:
 ### HuggingFace model
 !["LocalModel"](docs/pictures/local-model.png)
 
-## Run locally
-
-1) Set environment variables:
+Set environment variables:
 ```bash
 # Key Vault
 export KEYVAULT_URI="https://your-kv.vault.azure.net/"
@@ -115,68 +82,12 @@ export KEYVAULT_URI="https://your-kv.vault.azure.net/"
 export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=...;IngestionEndpoint=..."
 ```
 
-2) Ensure required secrets exist in Key Vault:
+Ensure required secrets exist in Key Vault:
 - Azure--search-endpoint
 - Azure--search-key
 - Azure--Form-Recognizer-Endpoint
 - Azure--Form-Recognizer-Key
 - Plus required OpenAI and Blob Storage secrets used by your service classes.
-
-3) Build and run:
-```bash
-dotnet build
-dotnet run --project AiKnowledgeAssistant
-```
-
-4) Swagger UI (Development only): http://localhost:5000/swagger or http://localhost:5135/swagger (depending on your ASP.NET ports).
-
-## API Reference
-
-### GET /health
-- Returns 200 OK to indicate the API is up.
-
-Example:
-```bash
-curl http://localhost:5135/health
-```
-
-### POST /upload
-- Uploads a file to Blob Storage.
-- Content type: multipart/form-data
-- Allowed file types: application/pdf, image/png
-
-Example:
-```bash
-curl -X POST "http://localhost:5135/upload" \
-  -F "file=@/path/to/document.pdf"
-```
-
-Returns:
-- 200 OK: "File uploaded successfully"
-- 400 Bad Request: when no form or file provided
-
-### POST /process
-- Uploads a file, extracts text (Form Recognizer), chunks and embeds it, and indexes chunks into Azure AI Search.
-- Content type: multipart/form-data
-
-> [!NOTE]
-> Markdown and plain text files are read directly by the API.  
-> Binary document formats such as PDF or images are processed through Azure Document Intelligence.
-
-Example:
-```bash
-curl -k -X POST "http://localhost:5292/process" \
-  -F "formFile=@evals/sample-docs/benchmark_document.md"
-```
-
-Response (200 OK):
-```json
-{
-  "File": "document.pdf",
-  "TextPreview": "First 200 characters...",
-  "Length": 12345
-}
-```
 
 Requirements:
 - Azure AI Search index named documents-index with a vector field embedding matching your embedding dimensions.
@@ -197,17 +108,6 @@ Response (200 OK):
   "question": "What is the maximum upload file size?",
   "answer": "The maximum upload file size is **30 MB**."
 }
-```
-
-### POST /sendToFunction
-- Sends the uploaded file to Azure Functions for additional processing (copy + extract metadata).
-- Content type: multipart/form-data
-- Requires IApplicationFunctionService to be configured with your Functions endpoints.
-
-Example:
-```bash
-curl -X POST "http://localhost:5135/sendToFunction" \
-  -F "file=@/path/to/document.pdf"
 ```
 
 ## Azure setup checklist
@@ -245,66 +145,6 @@ curl -X POST "http://localhost:5135/sendToFunction" \
 ## Telemetry
 - Set APPLICATIONINSIGHTS_CONNECTION_STRING to send logs/metrics/exceptions to Application Insights.
 - The app tracks events and request timings for key operations (uploads, processing, Q&A).
-
-## Evaluation
-
-This project includes a small evaluation setup for comparing baseline vector retrieval with local ONNX reranking.
-
-The evaluation flow is:
-
-```text
-benchmark document
-→ ingestion endpoint
-→ Azure AI Search index
-→ eval dataset questions
-→ /ask endpoint
-→ CSV results
-→ Jupyter notebook
-→ matplotlib plots
-```
-
-### Evaluation files
-
-```text
-evals/
-├── configs/
-│   ├── baseline_no_reranker.json
-│   └── local_onnx_reranker.json
-├── datasets/
-│   └── rag_eval_v1.jsonl
-├── sample-docs/
-│   └── benchmark_document.md
-├── results/
-│   ├── baseline_no_reranker.csv
-│   └── local_onnx_reranker.csv
-├── notebooks/
-│   └── 01_reranker_comparison.ipynb
-└── plots/
-    └── latency_per_question.png
-```
-
-### Compared experiments
-
-| Experiment             | Description                                                                                |
-| ---------------------- | ------------------------------------------------------------------------------------------ |
-| `baseline_no_reranker` | Uses vector search results directly without local reranking.                               |
-| `local_onnx_reranker`  | Retrieves vector candidates and reranks them locally using an ONNX cross-encoder reranker. |
-
-### Initial benchmark result
-
-The first synthetic benchmark showed that both approaches answered the simple benchmark questions correctly at a similar rate. However, the local ONNX reranker increased latency because it performs additional local inference for retrieved chunks.
-
-This is expected for a short synthetic document where vector search already finds the relevant chunks easily. A larger multi-document benchmark with more ambiguous chunks is needed to better demonstrate reranking benefits.
-
-### Latency per question
-
-![Latency per question](evals/plots/latency_per_question.png)
-
-### Notes
-
-* `contains_expected` is a simple keyword-based correctness metric.
-* It is useful for a first benchmark, but it is not a full factuality or faithfulness evaluation.
-* Future evaluation improvements may include retrieval hit rate, selected chunk inspection, LLM-as-judge, token usage, and reranker score analysis.
 
 ## Limitations 
 

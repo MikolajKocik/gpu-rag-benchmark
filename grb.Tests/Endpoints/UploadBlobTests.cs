@@ -10,7 +10,7 @@ using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.Extensibility;
 using Azure.AI.OpenAI;
 using Moq;
-using GpuRagBenchmark.Services.Azure.BlobStorage;
+using GpuRagBenchmark.Services.BlobStorage;
 
 namespace GpuRagBenchmark.Tests.Endpoints;
 
@@ -124,9 +124,20 @@ public sealed class UploadBlobTests : IClassFixture<WebApplicationFactory<Progra
     /// beyond the application's lifetime.</remarks>
     private sealed class InMemoryBlobStorageService : IBlobStorageService
     {
-        public Task UploadAsync(string fileName, Stream fileStream)
+        public Task UploadAsync(string fileName, Stream fileStream, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task UploadExtractBlobMetadataAsync(string blobName, Stream stream, CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        public Task UploadCopyBlobAsync(string blobName, Stream stream, CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
     }
 }
+

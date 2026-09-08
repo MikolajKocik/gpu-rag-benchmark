@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="grb\grb.csproj" />
+  <Project Path="grb.Tests\grb.Tests.csproj" />
+</Solution>
