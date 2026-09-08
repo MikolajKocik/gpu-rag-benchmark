@@ -1,7 +1,7 @@
 variable "project_name" {
   description = "Short project name used in Azure resource names."
   type        = string
-  default     = "aika"
+  default     = "grb"
 }
 
 variable "environment" {
@@ -38,7 +38,7 @@ variable "tags" {
   description = "Common Azure tags."
   type        = map(string)
   default = {
-    project = "ai-knowledge-assistant"
+    project = "gpu-rag-benchmark"
   }
 }
 
