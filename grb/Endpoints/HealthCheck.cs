@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Endpoints;
+namespace grb.Endpoints;
 
 public static class HealthCheck
 {

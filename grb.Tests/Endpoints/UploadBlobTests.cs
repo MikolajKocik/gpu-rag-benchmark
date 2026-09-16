@@ -1,18 +1,18 @@
-using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
-using Microsoft.Extensions.DependencyInjection.Extensions;
+using Azure.AI.OpenAI;
+using FluentAssertions;
+using grb.Services.BlobStorage;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Channel;
 using Microsoft.ApplicationInsights.Extensibility;
-using Azure.AI.OpenAI;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
-using GpuRagBenchmark.Services.BlobStorage;
 
-namespace GpuRagBenchmark.Tests.Endpoints;
+namespace grb.Tests.Endpoints;
 
 /// <summary>
 /// Provides integration tests for the file upload functionality of the application.
@@ -34,7 +34,7 @@ public sealed class UploadBlobTests : IClassFixture<WebApplicationFactory<Progra
                 // Telemetry InMemory config 
                 services.RemoveAll<TelemetryClient>();
                 services.RemoveAll<ITelemetryChannel>();
-                services.AddSingleton(provider =>
+                services.AddSingleton(_ =>
                 {
                     var config = TelemetryConfiguration.CreateDefault();
                     var inMemoryChannel = new InMemoryChannel();

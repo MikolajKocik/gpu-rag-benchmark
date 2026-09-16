@@ -1,14 +1,14 @@
-using GpuRagBenchmark.Services.BlobStorage;
-using GpuRagBenchmark.Services.OpenAI.ChatEmbeddings;
-using GpuRagBenchmark.Services.OpenAI.DataIngestion.Common;
+using System.Text;
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.Search.Documents;
+using grb.Services.BlobStorage;
+using grb.Services.OpenAI.ChatEmbeddings;
+using grb.Services.OpenAI.DataIngestion.Common;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel.Text;
-using System.Text;
 
-namespace GpuRagBenchmark.Services.OpenAI.DataIngestion;
+namespace grb.Services.OpenAI.DataIngestion;
 
 #pragma warning disable SKEXP0050
 public sealed class IngestionService(
@@ -24,7 +24,7 @@ public sealed class IngestionService(
 
     private readonly IBlobStorageService _blobService = blobService;
     private readonly ITextEmbeddingService _embeddingService = embeddingService;
-    
+
     private static SemaphoreSlim _semaphore = new SemaphoreSlim(50, 50);
 
     private async Task<string> ExtractTextAsync(Stream fileStream, CancellationToken cancellationToken)
@@ -39,11 +39,11 @@ public sealed class IngestionService(
         AnalyzeResult doc = response.Value;
         var sb = new StringBuilder();
 
-        foreach(var page in doc.Pages)
+        foreach (var page in doc.Pages)
         {
-            foreach(var line in page.Lines)
+            foreach (var line in page.Lines)
             {
-                sb.AppendLine(line.Content); 
+                sb.AppendLine(line.Content);
             }
         }
 
@@ -51,19 +51,19 @@ public sealed class IngestionService(
     }
 
     public async Task<string> ProcessDocumentAsync(
-        IFormFile form, 
+        IFormFile form,
         CancellationToken cancellationToken
         )
     {
         await _semaphore.WaitAsync(cancellationToken);
         try
-        {    
+        {
             using var stream = form.OpenReadStream();
             await _blobService.UploadAsync(form.FileName, stream, cancellationToken);
 
             stream.Position = 0;
             string extractedText;
-            
+
             string extension = Path.GetExtension(form.FileName).ToLowerInvariant();
 
             if (extension is ".md" or ".txt")
@@ -77,15 +77,15 @@ public sealed class IngestionService(
             }
 
             List<string> lines = TextChunker.SplitPlainTextLines(
-                extractedText, 
+                extractedText,
                 maxTokensPerLine: _options.MaxTokensPerLine
             );
             List<string> chunks = TextChunker.SplitPlainTextParagraphs(
-                lines, 
+                lines,
                 maxTokensPerParagraph: _options.MaxTokensPerParagraph
             );
 
-            IEnumerable<Task<float[]>> embeddingTasks = chunks.Select(chunk => 
+            IEnumerable<Task<float[]>> embeddingTasks = chunks.Select(chunk =>
                 _embeddingService.GetEmbeddingAsync(chunk, cancellationToken));
 
             float[][] embeddingsArray = await Task.WhenAll(embeddingTasks);

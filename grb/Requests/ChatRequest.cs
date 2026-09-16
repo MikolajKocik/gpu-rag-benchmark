@@ -1,4 +1,3 @@
-namespace GpuRagBenchmark.Requests
-{
-    public record ChatRequest(string question);
-}
+namespace grb.Requests;
+
+public record ChatRequest(string Question);

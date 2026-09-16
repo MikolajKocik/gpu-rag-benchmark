@@ -1,6 +1,7 @@
 using Azure.Storage.Blobs;
 
-namespace GpuRagBenchmark.Services.BlobStorage;
+namespace grb.Services.BlobStorage;
+
 public sealed class BlobStorageClients
 {
     public BlobStorageClients(

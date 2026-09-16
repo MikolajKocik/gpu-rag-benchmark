@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.OpenAI.DataIngestion;
+namespace grb.Services.OpenAI.DataIngestion;
 
 public interface IIngestionService
 {

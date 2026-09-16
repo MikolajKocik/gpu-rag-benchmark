@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.OpenAI.Ranker.Common;
+namespace grb.Services.OpenAI.Ranker.Common;
 
 public sealed record RankedChunk(
     string Content,

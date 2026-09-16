@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.OpenAI.ChatEmbeddings;
+namespace grb.Services.OpenAI.ChatEmbeddings;
 
 public interface ITextEmbeddingService
 {

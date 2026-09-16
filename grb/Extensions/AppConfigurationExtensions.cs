@@ -1,178 +1,177 @@
-using GpuRagBenchmark.Configurations;
-using GpuRagBenchmark.Services.BlobStorage;
-using GpuRagBenchmark.Services.OpenAI.ChatEmbeddings;
-using GpuRagBenchmark.Services.OpenAI.ChatGeneral;
-using GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
-using GpuRagBenchmark.Services.OpenAI.DataIngestion;
-using GpuRagBenchmark.Services.OpenAI.DataIngestion.Common;
-using GpuRagBenchmark.Services.OpenAI.Ranker;
-using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure;
+using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.AI.OpenAI;
 using Azure.Identity;
 using Azure.Search.Documents;
 using Azure.Security.KeyVault.Secrets;
 using Azure.Storage.Blobs;
-using Microsoft.ApplicationInsights.Extensibility;
+using grb.Configurations;
+using grb.Services.BlobStorage;
+using grb.Services.OpenAI.ChatEmbeddings;
+using grb.Services.OpenAI.ChatGeneral;
+using grb.Services.OpenAI.ChatGeneral.Common;
+using grb.Services.OpenAI.DataIngestion;
+using grb.Services.OpenAI.DataIngestion.Common;
+using grb.Services.OpenAI.Ranker;
 using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.Extensibility;
 
-namespace GpuRagBenchmark.Extensions
+namespace grb.Extensions;
+
+public static class AppConfigurationExtensions
 {
-    public static class AppConfigurationExtensions
+    public static async Task ConfigureServicesAsync(this WebApplicationBuilder builder)
     {
-        public static async Task ConfigureServicesAsync(this WebApplicationBuilder builder)
+        ConfigurationManager cfg = builder.Configuration;
+        IServiceCollection services = builder.Services;
+
+        var secretClient = ConfigureKeyVault(builder);
+
+        await ConfigureAzureClientsAsync(services, cfg, secretClient);
+
+        ConfigureAppInsights(builder);
+
+        services.AddSingleton<IBlobStorageService, BlobStorageService>();
+
+        SetOpenAIServices(builder.Services, builder.Configuration);
+    }
+
+    private static void SetOpenAIServices(this IServiceCollection services, IConfiguration cfg)
+    {
+        services.Configure<RagOptions>(cfg.GetSection("Rag"));
+        services.Configure<AzureOpenAIOptions>(cfg.GetSection("AzureOpenAI"));
+        services.Configure<IngestionOptions>(cfg.GetSection("Ingestion"));
+
+        services.AddSingleton<ITextEmbeddingService, TextEmbeddingService>();
+        services.AddSingleton<IIngestionService, IngestionService>();
+        services.AddSingleton<IChatService, ChatService>();
+
+        // Reranker strategy for evals
+        string? rankerType = cfg["Rag:Ranker"];
+        ArgumentException.ThrowIfNullOrWhiteSpace(rankerType);
+
+        if (rankerType == "local_reranker")
         {
-            ConfigurationManager cfg = builder.Configuration;
-            IServiceCollection services = builder.Services;
+            services.AddSingleton<IChunkRanker>(_ =>
+            {
+                var modelPath = cfg["Ranker:ModelPath"]
+                    ?? throw new InvalidOperationException("Ranker model path not found.");
+                var sentencePieceModelPath = cfg["Ranker:SentencePieceModelPath"]
+                    ?? throw new InvalidOperationException("Ranker SentencePiece path not found.");
 
-            var secretClient = ConfigureKeyVault(builder);
+                return new LocalRankerService(modelPath, sentencePieceModelPath);
+            });
+        }
+        else if (rankerType == "none")
+        {
+            services.AddSingleton<IChunkRanker, NoOpChunkRanker>();
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unknown ranker type: {rankerType}");
+        }
+    }
 
-            await ConfigureAzureClientsAsync(services, cfg, secretClient);
+    private static SecretClient ConfigureKeyVault(WebApplicationBuilder builder)
+    {
+        string kvUri = builder.Configuration["KEYVAULT_URI"]
+            ?? throw new InvalidOperationException("KEYVAULT_URI not found.");
 
-            ConfigureAppInsights(builder);
+        var secretClient = new SecretClient(
+            new Uri(kvUri),
+            new DefaultAzureCredential());
 
-            services.AddSingleton<IBlobStorageService, BlobStorageService>();
+        builder.Services.AddSingleton(secretClient);
 
-            SetOpenAIServices(builder.Services, builder.Configuration);
+        return secretClient;
+    }
+
+    private static void ConfigureAppInsights(this WebApplicationBuilder builder)
+    {
+        string? appConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
+
+        if (string.IsNullOrWhiteSpace(appConn))
+        {
+            builder.Services.AddSingleton(new TelemetryClient(new TelemetryConfiguration()));
+            return;
         }
 
-        private static void SetOpenAIServices(this IServiceCollection services, IConfiguration cfg)
-        {
-            services.Configure<RagOptions>(cfg.GetSection("Rag"));
-            services.Configure<AzureOpenAIOptions>(cfg.GetSection("AzureOpenAI"));
-            services.Configure<IngestionOptions>(cfg.GetSection("Ingestion"));
-
-            services.AddSingleton<ITextEmbeddingService, TextEmbeddingService>();
-            services.AddSingleton<IIngestionService, IngestionService>();
-            services.AddSingleton<IChatService, ChatService>();
-
-            // Reranker strategy for evals
-            string? rankerType = cfg["Rag:Ranker"];
-            ArgumentException.ThrowIfNullOrWhiteSpace(rankerType);
-
-            if (rankerType == "local_reranker")
-            {
-                services.AddSingleton<IChunkRanker>(_ =>
-                {
-                    var modelPath = cfg["Ranker:ModelPath"]
-                        ?? throw new InvalidOperationException("Ranker model path not found.");
-                    var sentencePieceModelPath = cfg["Ranker:SentencePieceModelPath"]
-                        ?? throw new InvalidOperationException("Ranker SentencePiece path not found.");
-
-                    return new LocalRankerService(modelPath, sentencePieceModelPath);
-                });
-            }
-            else if (rankerType == "none")
-            {
-                services.AddSingleton<IChunkRanker, NoOpChunkRanker>();
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unknown ranker type: {rankerType}");
-            }
-        }
-
-        private static SecretClient ConfigureKeyVault(WebApplicationBuilder builder)
-        {
-            string kvUri = builder.Configuration["KEYVAULT_URI"]
-                ?? throw new InvalidOperationException("KEYVAULT_URI not found.");
-
-            var secretClient = new SecretClient(
-                new Uri(kvUri),
-                new DefaultAzureCredential());
-
-            builder.Services.AddSingleton(secretClient);
-
-            return secretClient;
-        }
-
-        private static void ConfigureAppInsights(this WebApplicationBuilder builder)
-        {
-            string? appConn = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
-
-            if (string.IsNullOrWhiteSpace(appConn))
-            {
-                builder.Services.AddSingleton(new TelemetryClient(new TelemetryConfiguration()));
-                return;
-            }
-
-            builder.Logging.AddApplicationInsights(
-                configureTelemetryConfiguration: cfg =>
-                {
-                    cfg.ConnectionString = appConn;
-                },
-                configureApplicationInsightsLoggerOptions: options => { }
-            );
-
-            builder.Services.Configure<TelemetryConfiguration>(cfg =>
+        builder.Logging.AddApplicationInsights(
+            configureTelemetryConfiguration: cfg =>
             {
                 cfg.ConnectionString = appConn;
-                cfg.TelemetryInitializers.Add(
-                    new CloudRoleNameInitializer(
-                        "AI Knowledge Assistant API",
-                        Environment.MachineName));
-            });
+            },
+            configureApplicationInsightsLoggerOptions: options => { }
+        );
 
-            builder.Services.AddSingleton(sp =>
-                new TelemetryClient(sp.GetRequiredService<TelemetryConfiguration>()));
-        }
-        
-        private static async Task ConfigureAzureClientsAsync(
-            IServiceCollection services,
-            IConfiguration cfg,
-            SecretClient secretClient
-            )
+        builder.Services.Configure<TelemetryConfiguration>(cfg =>
         {
-            string formRecognizerEndpoint = (await secretClient.GetSecretAsync("Azure--Form-Recognizer-Endpoint"))
-                .Value.Value;
+            cfg.ConnectionString = appConn;
+            cfg.TelemetryInitializers.Add(
+                new CloudRoleNameInitializer(
+                    "AI Knowledge Assistant API",
+                    Environment.MachineName));
+        });
 
-            string formRecognizerKey = (await secretClient.GetSecretAsync("Azure--Form-Recognizer-Key"))
-                .Value.Value;
+        builder.Services.AddSingleton(sp =>
+            new TelemetryClient(sp.GetRequiredService<TelemetryConfiguration>()));
+    }
 
-            services.AddSingleton(new DocumentAnalysisClient(
-                new Uri(formRecognizerEndpoint),
-                new AzureKeyCredential(formRecognizerKey)));
+    private static async Task ConfigureAzureClientsAsync(
+        IServiceCollection services,
+        IConfiguration cfg,
+        SecretClient secretClient
+        )
+    {
+        string formRecognizerEndpoint = (await secretClient.GetSecretAsync("Azure--Form-Recognizer-Endpoint"))
+            .Value.Value;
 
-            string searchEndpoint = (await secretClient.GetSecretAsync("Azure--search-endpoint"))
-                .Value.Value;
+        string formRecognizerKey = (await secretClient.GetSecretAsync("Azure--Form-Recognizer-Key"))
+            .Value.Value;
 
-            string searchKey = (await secretClient.GetSecretAsync("Azure--search-key"))
-                .Value.Value;
+        services.AddSingleton(new DocumentAnalysisClient(
+            new Uri(formRecognizerEndpoint),
+            new AzureKeyCredential(formRecognizerKey)));
 
-            string searchIndexName = cfg["AzureSearch:IndexName"] ?? "documents-index";
+        string searchEndpoint = (await secretClient.GetSecretAsync("Azure--search-endpoint"))
+            .Value.Value;
 
-            services.AddSingleton(new SearchClient(
-                new Uri(searchEndpoint),
-                searchIndexName,
-                new AzureKeyCredential(searchKey)));
+        string searchKey = (await secretClient.GetSecretAsync("Azure--search-key"))
+            .Value.Value;
 
-            string openAiEndpoint = (await secretClient.GetSecretAsync("Azure--OpenAI--Endpoint"))
-                .Value.Value;
+        string searchIndexName = cfg["AzureSearch:IndexName"] ?? "documents-index";
 
-            string openAiKey = (await secretClient.GetSecretAsync("Azure--OpenAI--Key"))
-                .Value.Value;
+        services.AddSingleton(new SearchClient(
+            new Uri(searchEndpoint),
+            searchIndexName,
+            new AzureKeyCredential(searchKey)));
 
-            services.AddSingleton(new AzureOpenAIClient(
-                new Uri(openAiEndpoint),
-                new AzureKeyCredential(openAiKey)));
+        string openAiEndpoint = (await secretClient.GetSecretAsync("Azure--OpenAI--Endpoint"))
+            .Value.Value;
 
-            string storageConnectionString = (await secretClient.GetSecretAsync("Azure--StorageConnectionString"))
-                .Value.Value;
+        string openAiKey = (await secretClient.GetSecretAsync("Azure--OpenAI--Key"))
+            .Value.Value;
 
-            string primaryContainerName = (await secretClient.GetSecretAsync("Azure--BlobContainerName"))
-                .Value.Value;
+        services.AddSingleton(new AzureOpenAIClient(
+            new Uri(openAiEndpoint),
+            new AzureKeyCredential(openAiKey)));
 
-            string extractContainerName = (await secretClient.GetSecretAsync("Azure--FunctionAppBlobContainerNameExtract"))
-                .Value.Value;
+        string storageConnectionString = (await secretClient.GetSecretAsync("Azure--StorageConnectionString"))
+            .Value.Value;
 
-            string copyContainerName = (await secretClient.GetSecretAsync("Azure--FunctionAppBlobContainerNameCopy"))
-                .Value.Value;
+        string primaryContainerName = (await secretClient.GetSecretAsync("Azure--BlobContainerName"))
+            .Value.Value;
 
-            services.AddSingleton(new BlobStorageClients(
-                new BlobContainerClient(storageConnectionString, primaryContainerName),
-                new BlobContainerClient(storageConnectionString, extractContainerName),
-                new BlobContainerClient(storageConnectionString, copyContainerName)
-            ));
-        }
+        string extractContainerName = (await secretClient.GetSecretAsync("Azure--FunctionAppBlobContainerNameExtract"))
+            .Value.Value;
+
+        string copyContainerName = (await secretClient.GetSecretAsync("Azure--FunctionAppBlobContainerNameCopy"))
+            .Value.Value;
+
+        services.AddSingleton(new BlobStorageClients(
+            new BlobContainerClient(storageConnectionString, primaryContainerName),
+            new BlobContainerClient(storageConnectionString, extractContainerName),
+            new BlobContainerClient(storageConnectionString, copyContainerName)
+        ));
     }
 }

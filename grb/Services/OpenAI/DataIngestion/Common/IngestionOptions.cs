@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.OpenAI.DataIngestion.Common;
+namespace grb.Services.OpenAI.DataIngestion.Common;
 
 public sealed class IngestionOptions
 {

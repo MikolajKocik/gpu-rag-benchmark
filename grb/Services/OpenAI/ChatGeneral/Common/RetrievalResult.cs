@@ -1,12 +1,12 @@
-using GpuRagBenchmark.Services.OpenAI.Ranker.Common;
+using grb.Services.OpenAI.Ranker.Common;
 
-namespace GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
+namespace grb.Services.OpenAI.ChatGeneral.Common;
 
 public sealed record RetrievalResult(
-    string Context, 
+    string Context,
     IReadOnlyList<RankedChunk> RankedChunks,
     IReadOnlyList<RankedChunk> SelectedChunks,
     int VectorTopK,
     int FinalTopK,
     long LatencyMs
-); 
+);

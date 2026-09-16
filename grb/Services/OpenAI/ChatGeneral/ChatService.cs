@@ -1,17 +1,17 @@
 using System.ClientModel;
+using System.Diagnostics;
 using Azure;
 using Azure.AI.OpenAI;
 using Azure.Search.Documents;
 using Azure.Search.Documents.Models;
-using OpenAI.Chat;
-using GpuRagBenchmark.Services.OpenAI.Ranker;
-using GpuRagBenchmark.Services.OpenAI.Ranker.Common;
-using GpuRagBenchmark.Services.OpenAI.ChatEmbeddings;
+using grb.Services.OpenAI.ChatEmbeddings;
+using grb.Services.OpenAI.ChatGeneral.Common;
+using grb.Services.OpenAI.Ranker;
+using grb.Services.OpenAI.Ranker.Common;
 using Microsoft.Extensions.Options;
-using GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
-using System.Diagnostics;
+using OpenAI.Chat;
 
-namespace GpuRagBenchmark.Services.OpenAI.ChatGeneral;
+namespace grb.Services.OpenAI.ChatGeneral;
 
 public sealed class ChatService : IChatService
 {
@@ -48,7 +48,7 @@ public sealed class ChatService : IChatService
     /// <param name="cancellationToken">Propagates notification that operations should be canceled.</param>
     /// <returns>A formatted string containing the concatenated content of the top matching documents.</returns>
     public async Task<RetrievalResult> RetrieveDocumentAsync(string question, CancellationToken cancellationToken)
-    {   
+    {
         var stopwatch = Stopwatch.StartNew();
 
         float[] questionEmbedding = await _embeddingService.GetEmbeddingAsync(question, cancellationToken);
@@ -66,16 +66,16 @@ public sealed class ChatService : IChatService
                         Fields = { "embedding" }
                     }
                 }
-            } 
+            }
         };
-        
-        Response<SearchResults<SearchDocument>> searchResponse = 
+
+        Response<SearchResults<SearchDocument>> searchResponse =
             await _searchClient.SearchAsync<SearchDocument>(
-                null, 
-                options, 
+                null,
+                options,
                 cancellationToken
             );
-        
+
         List<string> chunks = searchResponse.Value
             .GetResults()
             .Select(result => result.Document["content"].ToString()!)
@@ -91,9 +91,9 @@ public sealed class ChatService : IChatService
         IReadOnlyList<RankedChunk> selectedChunks = rankedChunks
             .Take(_finalTopK)
             .ToList();
-          
+
         string context = string.Join(
-            "\n---\n", 
+            "\n---\n",
             selectedChunks.Select(x => x.Content)
         );
 
@@ -125,11 +125,8 @@ public sealed class ChatService : IChatService
         };
 
         string systemMsg = $@"
-        You are a helpful knowledge document assistant.
-
-        Instructions:
-        - Answer the user's question using ONLY the following document excerpts.
-        - If the answer isn't in the documents, say 'Sorry but I dont have any information about this question.'
+        You are a helpful knowledge document assistant.Instructions:
+        - Answer the user's question using ONLY the following document excerpts.- If the answer isn't in the documents, say 'Sorry but I dont have any information about this question.'
 
         Documents (Context):
         {context}

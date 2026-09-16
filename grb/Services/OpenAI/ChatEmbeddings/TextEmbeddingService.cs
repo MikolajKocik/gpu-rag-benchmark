@@ -1,10 +1,10 @@
 using System.ClientModel;
-using GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
 using Azure.AI.OpenAI;
+using grb.Services.OpenAI.ChatGeneral.Common;
 using Microsoft.Extensions.Options;
 using OpenAI.Embeddings;
 
-namespace GpuRagBenchmark.Services.OpenAI.ChatEmbeddings;
+namespace grb.Services.OpenAI.ChatEmbeddings;
 
 public sealed class TextEmbeddingService : ITextEmbeddingService
 {
@@ -16,15 +16,15 @@ public sealed class TextEmbeddingService : ITextEmbeddingService
         _embeddingClient = openAIClient.GetEmbeddingClient(
             options.Value.EmbeddingDeploymentName);
     }
-  
+
     public async Task<float[]> GetEmbeddingAsync(string input, CancellationToken cancellationToken)
     {
         ClientResult<OpenAIEmbedding> response = await _embeddingClient.GenerateEmbeddingAsync(
-            input, 
-            null, 
+            input,
+            null,
             cancellationToken
         );
-        
+
         return response.Value.ToFloats().ToArray();
     }
 }

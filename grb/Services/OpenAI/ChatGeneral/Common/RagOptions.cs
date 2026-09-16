@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
+namespace grb.Services.OpenAI.ChatGeneral.Common;
 
 public sealed class RagOptions
 {

@@ -1,6 +1,6 @@
-using GpuRagBenchmark.Services.OpenAI.ChatGeneral.Common;
+using grb.Services.OpenAI.ChatGeneral.Common;
 
-namespace GpuRagBenchmark.Services.OpenAI.ChatGeneral;
+namespace grb.Services.OpenAI.ChatGeneral;
 
 public interface IChatService
 {

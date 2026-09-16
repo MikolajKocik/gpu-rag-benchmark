@@ -1,6 +1,6 @@
-using GpuRagBenchmark.Services.OpenAI.Ranker.Common;
+using grb.Services.OpenAI.Ranker.Common;
 
-namespace GpuRagBenchmark.Services.OpenAI.Ranker;
+namespace grb.Services.OpenAI.Ranker;
 
 public sealed class NoOpChunkRanker : IChunkRanker
 {

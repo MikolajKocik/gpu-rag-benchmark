@@ -1,12 +1,13 @@
-using GpuRagBenchmark.Endpoints;
-using GpuRagBenchmark.Extensions;
+using grb.Endpoints;
+using grb.Extensions;
 using Microsoft.AspNetCore.Http.Features;
+using static grb.Endpoints.HealthCheck;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 30 * 1024 * 1024; 
+    options.MultipartBodyLengthLimit = 30 * 1024 * 1024;
 });
 
 await builder.ConfigureServicesAsync();

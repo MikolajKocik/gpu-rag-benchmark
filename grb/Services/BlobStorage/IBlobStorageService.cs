@@ -1,4 +1,4 @@
-namespace GpuRagBenchmark.Services.BlobStorage;
+namespace grb.Services.BlobStorage;
 
 public interface IBlobStorageService
 {

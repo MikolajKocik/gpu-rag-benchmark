@@ -1,9 +1,9 @@
-using GpuRagBenchmark.Services.OpenAI.Ranker.Common;
+using grb.Services.OpenAI.Ranker.Common;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using Microsoft.ML.Tokenizers;
 
-namespace GpuRagBenchmark.Services.OpenAI.Ranker;
+namespace grb.Services.OpenAI.Ranker;
 
 public sealed class LocalRankerService : IChunkRanker, IDisposable
 {
@@ -15,14 +15,14 @@ public sealed class LocalRankerService : IChunkRanker, IDisposable
         _session = new InferenceSession(modelPath);
 
         using var stream = File.OpenRead(sentencePieceModelPath);
-        
+
         _tokenizer = SentencePieceTokenizer.Create(
             stream,
             addBeginningOfSentence: false,
             addEndOfSentence: false
         );
     }
-    
+
     private float CalculateScore(string query, string document)
     {
         IReadOnlyList<int> queryTokens = _tokenizer.EncodeToIds(query);
@@ -43,7 +43,7 @@ public sealed class LocalRankerService : IChunkRanker, IDisposable
         {
             inputIdsList = inputIdsList.Take(MaxSequenceLength).ToList();
         }
-        
+
         int sequenceLength = inputIdsList.Count;
 
         // Tensors
@@ -53,7 +53,7 @@ public sealed class LocalRankerService : IChunkRanker, IDisposable
         for (int i = 0; i < sequenceLength; i++)
         {
             inputIdsTensor[0, i] = inputIdsList[i];
-            attentionMaskTensor[0, i] = 1; 
+            attentionMaskTensor[0, i] = 1;
         }
 
         // Neuron network ports
@@ -75,8 +75,8 @@ public sealed class LocalRankerService : IChunkRanker, IDisposable
     }
 
     public Task<IReadOnlyList<RankedChunk>> RankAsync(
-        string query, 
-        IReadOnlyList<string> chunks, 
+        string query,
+        IReadOnlyList<string> chunks,
         CancellationToken cancellationToken
         )
     {
@@ -87,14 +87,14 @@ public sealed class LocalRankerService : IChunkRanker, IDisposable
 
                 var score = CalculateScore(query, chunk);
                 return new RankedChunk(
-                    chunk, 
-                    score, 
+                    chunk,
+                    score,
                     "local_reranker"
                 );
             })
             .OrderByDescending(x => x.Score)
             .ToList();
-        
+
         return Task.FromResult<IReadOnlyList<RankedChunk>>(ranked);
     }
 
