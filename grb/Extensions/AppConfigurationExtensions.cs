@@ -1,3 +1,5 @@
+using System.ClientModel;
+using System.Net.Http.Headers;
 using Azure;
 using Azure.AI.FormRecognizer.DocumentAnalysis;
 using Azure.AI.OpenAI;
@@ -15,6 +17,8 @@ using grb.Services.OpenAI.DataIngestion.Common;
 using grb.Services.OpenAI.Ranker;
 using Microsoft.ApplicationInsights;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.Extensions.Options;
+using OpenAI;
 
 namespace grb.Extensions;
 
@@ -34,6 +38,22 @@ public static class AppConfigurationExtensions
         services.AddSingleton<IBlobStorageService, BlobStorageService>();
 
         SetOpenAIServices(builder.Services, builder.Configuration);
+        SetNvidiaServices(builder);
+    }
+
+    private static void SetNvidiaServices(this WebApplicationBuilder builder)
+    {
+        builder.Services.Configure<NvidiaOptions>(builder.Configuration.GetSection("NVIDIA"));
+
+        string nvidiaApiKey = builder.Configuration["NVIDIA:ApiKey"]!;
+        const string nvidiaBaseUrl = "https://integrate.api.nvidia.com/v1/";
+
+        var options = new OpenAIClientOptions();
+        options.Endpoint = new Uri(nvidiaBaseUrl);
+
+        var openAIClient = new OpenAIClient(new ApiKeyCredential(nvidiaApiKey), options);
+
+        builder.Services.AddSingleton(openAIClient);
     }
 
     private static void SetOpenAIServices(this IServiceCollection services, IConfiguration cfg)
@@ -42,13 +62,36 @@ public static class AppConfigurationExtensions
         services.Configure<AzureOpenAIOptions>(cfg.GetSection("AzureOpenAI"));
         services.Configure<IngestionOptions>(cfg.GetSection("Ingestion"));
 
-        services.AddSingleton<ITextEmbeddingService, TextEmbeddingService>();
+        services.AddSingleton<TextEmbeddingService>();
+        services.AddSingleton<NvidiaTextEmbeddingService>();
+
+        services.AddSingleton<ITextEmbeddingService>(sp =>
+        {
+            string? provider = cfg["Rag:EmbeddingProvider"];
+
+            if (string.Equals(provider, "nvidia", StringComparison.OrdinalIgnoreCase))
+            {
+                return sp.GetRequiredService<NvidiaTextEmbeddingService>();
+            }
+
+            // default Azure
+            return sp.GetRequiredService<TextEmbeddingService>();
+        });
+
         services.AddSingleton<IIngestionService, IngestionService>();
         services.AddSingleton<IChatService, ChatService>();
 
         // Reranker strategy for evals
         string? rankerType = cfg["Rag:Ranker"];
         ArgumentException.ThrowIfNullOrWhiteSpace(rankerType);
+
+        services.AddHttpClient<NvidiaRankerService>((sp, client) =>
+        {
+            var nvOptions = sp.GetRequiredService<IOptions<NvidiaOptions>>().Value;
+            string baseUrl = nvOptions.BaseUrl.EndsWith('/') ? nvOptions.BaseUrl : nvOptions.BaseUrl + "/";
+            client.BaseAddress = new Uri(baseUrl);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", nvOptions.ApiKey);
+        });
 
         if (rankerType == "local_reranker")
         {
@@ -61,6 +104,10 @@ public static class AppConfigurationExtensions
 
                 return new LocalRankerService(modelPath, sentencePieceModelPath);
             });
+        }
+        else if (rankerType == "nvidia")
+        {
+            services.AddSingleton<IChunkRanker>(sp => sp.GetRequiredService<NvidiaRankerService>());
         }
         else if (rankerType == "none")
         {
@@ -101,7 +148,7 @@ public static class AppConfigurationExtensions
             {
                 cfg.ConnectionString = appConn;
             },
-            configureApplicationInsightsLoggerOptions: options => { }
+            configureApplicationInsightsLoggerOptions: _ => { }
         );
 
         builder.Services.Configure<TelemetryConfiguration>(cfg =>

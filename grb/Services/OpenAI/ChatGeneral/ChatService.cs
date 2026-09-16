@@ -8,7 +8,9 @@ using grb.Services.OpenAI.ChatEmbeddings;
 using grb.Services.OpenAI.ChatGeneral.Common;
 using grb.Services.OpenAI.Ranker;
 using grb.Services.OpenAI.Ranker.Common;
+using grb.Utils;
 using Microsoft.Extensions.Options;
+using OpenAI;
 using OpenAI.Chat;
 
 namespace grb.Services.OpenAI.ChatGeneral;
@@ -28,8 +30,7 @@ public sealed class ChatService : IChatService
         AzureOpenAIClient client,
         SearchClient searchClient,
         IOptions<RagOptions> ragOptions,
-        IOptions<AzureOpenAIOptions> azOptions
-        )
+        IOptions<AzureOpenAIOptions> azOptions)
     {
         _chatClient = client.GetChatClient(azOptions.Value.ChatDeploymentName);
 
@@ -44,7 +45,7 @@ public sealed class ChatService : IChatService
     /// <summary>
     /// Retrieves relevant document excerpts from Azure AI Search based on the user's question embedding.
     /// </summary>
-    /// <param name="request">The chat request containing the user's question.</param>
+    /// <param name="question">The chat request containing the user's question.</param>
     /// <param name="cancellationToken">Propagates notification that operations should be canceled.</param>
     /// <returns>A formatted string containing the concatenated content of the top matching documents.</returns>
     public async Task<RetrievalResult> RetrieveDocumentAsync(string question, CancellationToken cancellationToken)
@@ -112,7 +113,7 @@ public sealed class ChatService : IChatService
     /// <summary>
     /// Generates an answer to the user's question using the Azure OpenAI GPT model, augmented with the retrieved document context.
     /// </summary>
-    /// <param name="request">The chat request containing the user's question.</param>
+    /// <param name="question">The chat request containing the user's question.</param>
     /// <param name="context">The document excerpts retrieved from the knowledge base to be used as context.</param>
     /// <param name="cancellationToken">Propagates notification that operations should be canceled.</param>
     /// <returns>The generated text response from the GPT model.</returns>
@@ -124,13 +125,8 @@ public sealed class ChatService : IChatService
             Temperature = 0.1f,
         };
 
-        string systemMsg = $@"
-        You are a helpful knowledge document assistant.Instructions:
-        - Answer the user's question using ONLY the following document excerpts.- If the answer isn't in the documents, say 'Sorry but I dont have any information about this question.'
-
-        Documents (Context):
-        {context}
-        ";
+        string prompt = PromptUtils.LoadPrompt(1);
+        string systemMsg = prompt.Replace("{{$context}}", context);
 
         List<ChatMessage> messages = new()
         {
